@@ -1,0 +1,83 @@
+
+spider.png
+size: 2048,512
+format: RGBA8888
+filter: Linear,Linear
+repeat: none
+spider_Body
+  rotate: false
+  xy: 4, 4
+  size: 340, 494
+  orig: 340, 494
+  offset: 0, 0
+  index: -1
+spider_Eye
+  rotate: false
+  xy: 1173, 113
+  size: 40, 25
+  orig: 40, 25
+  offset: 0, 0
+  index: -1
+spider_Fly_Eye
+  rotate: false
+  xy: 1029, 146
+  size: 229, 150
+  orig: 229, 150
+  offset: 0, 0
+  index: -1
+spider_Fly_Leg
+  rotate: false
+  xy: 352, 25
+  size: 169, 45
+  orig: 169, 45
+  offset: 0, 0
+  index: -1
+spider_Fly_Sucker
+  rotate: false
+  xy: 1955, 311
+  size: 64, 187
+  orig: 64, 187
+  offset: 0, 0
+  index: -1
+spider_Leg
+  rotate: false
+  xy: 720, 304
+  size: 440, 194
+  orig: 440, 194
+  offset: 0, 0
+  index: -1
+spider_Leg_2
+  rotate: false
+  xy: 1168, 336
+  size: 446, 162
+  orig: 446, 162
+  offset: 0, 0
+  index: -1
+spider_Leg_3
+  rotate: false
+  xy: 1622, 322
+  size: 325, 176
+  orig: 325, 176
+  offset: 0, 0
+  index: -1
+spider_Leg_4
+  rotate: false
+  xy: 720, 56
+  size: 301, 240
+  orig: 301, 240
+  offset: 0, 0
+  index: -1
+spider_Mandible
+  rotate: false
+  xy: 1029, 57
+  size: 136, 81
+  orig: 136, 81
+  offset: 0, 0
+  index: -1
+spider_Wing
+  rotate: false
+  xy: 352, 78
+  size: 360, 420
+  orig: 360, 420
+  offset: 0, 0
+  index: -1

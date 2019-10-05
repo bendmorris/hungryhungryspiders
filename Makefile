@@ -5,3 +5,6 @@ assets/graphics/spider.atlas assets/graphics/spider.json: assets/spine/spider.sp
 	~/Applications/Spine/Spine.sh -i $< -e assets/spine/export.json -o assets/graphics
 
 spine-assets: assets/graphics/spider.atlas assets/graphics/spider.json
+
+%.png: %.svg
+	inkscape --without-gui --export-png=$@ --export-dpi=96 $<

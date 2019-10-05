@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<app title="Hungry Hungry Spiders" file="spiders" main="Main" version="0.1.0" company="MouseMob"/>
+	<app package="com.mousemob.catalyst"/>
+
+	<set name="BUILD_DIR" value="bin"/>
+	<set name="BUILD_DIR" value="bin-debug" if="debug || hxcpp_debug"/>
+
+	<section unless="hxp_debug_console">
+		<set name="hxp_no_assets"/>
+		<haxedef name="hxp_no_assets"/>
+	</section>
+	<haxedef name="render_batch"/>
+
+	<window fps="30" background="#ffffff" hardware="true" vsync="true" resizable="false" antialiasing="4"/>
+	<window orientation="portrait"/>
+	<window width="0" height="0"/>
+	<window allow-shaders="true"/>
+
+	<assets path="assets/graphics" include="*.png$" type="image" embed="true"/>
+	<assets path="assets/graphics" include="*.json|*.atlas" exclude="pack.json" type="text" embed="true"/>
+	<!--assets path="assets/fonts" include="*.png$" type="image" embed="true"/>
+	<assets path="assets/sounds" include="*.ogg" type="sound" embed="true"/>
+	<assets path="assets/music" include="*.ogg" type="music" embed="true"/>
+	<assets path="assets/fonts" include="*.fnt" type="text" embed="true"/>
+	<assets path="assets/shaders" include="*.frag" type="text" embed="true"/-->
+
+	<haxelib name="spinehaxe"/>
+	<haxelib name="SpinePunk"/>
+	<haxelib name="HaxePunk"/>
+
+	<source path="src"/>
+</project>
