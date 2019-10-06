@@ -18,3 +18,11 @@ assets/fonts/octobercrow.72.fnt: assets/fonts/octobercrow.ttf
 
 %.wav: %.xm
 	xmp $< -a 2 -o $@
+
+js:
+	lime build html5
+	terser bin/html5/bin/spiders.js -o bin/html5/bin/spiders.js.min -c -m
+
+js-fast:
+	lime build html5
+	cp bin/html5/bin/spiders.js bin/html5/bin/spiders.js.min

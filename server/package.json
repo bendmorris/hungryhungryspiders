@@ -1,0 +1,28 @@
+{
+  "name": "spiders-server",
+  "version": "1.0.0",
+  "description": "Hungry Hungry Spiders",
+  "main": "src/server.js",
+  "dependencies": {
+    "express": "^4.17.1",
+    "ws": "^7.1.2",
+    "typescript": "^3.6.3",
+    "@types/ws": "*",
+    "@types/node": "*",
+    "@types/express": "*"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bendmorris/hungryhungryspiders.git"
+  },
+  "author": "Ben Morris <ben@bendmorris.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bendmorris/hungryhungryspiders/issues"
+  },
+  "homepage": "https://github.com/bendmorris/hungryhungryspiders#readme"
+}

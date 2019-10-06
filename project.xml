@@ -30,4 +30,6 @@
 	<haxelib name="HaxePunk"/>
 
 	<source path="src"/>
+
+	<template path="templates/index.html" rename="index.html" if="html5" unless="debug"/>
 </project>

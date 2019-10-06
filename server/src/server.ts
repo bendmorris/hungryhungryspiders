@@ -13,7 +13,7 @@ const names = fs.readFileSync('names.txt').toString().split('\n');
 const arenaSize = 12;
 const geoCacheCellSize = 2;
 const geoCacheRowSize = arenaSize / geoCacheCellSize;
-const eatTime = 2.5;
+const eatTime = 1.5;
 const maxFlies = Math.floor(arenaSize * arenaSize / 5);
 const flySpawnTime = 0.25;
 const deathBuffer = 0.5;
@@ -22,8 +22,8 @@ const PING_TIMEOUT = 15000;
 const MIN_SIZE = 100;
 const MAX_SIZE = 100000;
 const WORST_MOVE_SPEED: number = 16;
-const BEST_MOVE_SPEED: number = 320;
-const WORST_ROTATE_SPEED: number = 0.5235987755982988; // 30 degrees in radians
+const BEST_MOVE_SPEED: number = 512;
+const WORST_ROTATE_SPEED: number = 0.3141592653589793; // 18 degrees in radians
 const BEST_ROTATE_SPEED: number = 4.71238898038469; // 270 degrees in radians
 const MIN_SCALE: number = 0.125;
 const MAX_SCALE: number = 1;
@@ -155,7 +155,7 @@ class Spider {
     public bite(other: Spider, time: number) {
         if (this.health <= 0 || other.health <= 0) return;
         this.state = SpiderState.Biting;
-        let eat = Math.max(Math.min(Math.min(this.size, other.size) * time / eatTime, other.size - MIN_SIZE), 0);
+        let eat = Math.max(Math.min(other.size * time / eatTime, other.size - MIN_SIZE), 0);
         other.size -= eat;
         if (other.size <= MIN_SIZE) {
             other.health -= time / deathBuffer;
@@ -455,8 +455,8 @@ wss.on('connection', (ws: WebSocket) => {
                     const key = message.readUInt16LE(cursor); cursor += 2;
                     if (key === conn._playerKey) {
                         const spider = conn._spider;
-                        spider.x = mod(message.readFloatLE(cursor), arenaSize); cursor += 4;
-                        spider.y = mod(message.readFloatLE(cursor), arenaSize); cursor += 4;
+                        spider.x = mod(message.readFloatLE(cursor), arenaSize) || 0; cursor += 4;
+                        spider.y = mod(message.readFloatLE(cursor), arenaSize) || 0; cursor += 4;
                         spider.angle = message.readFloatLE(cursor); cursor += 4;
                         spider.dirty = true;
                     } else {

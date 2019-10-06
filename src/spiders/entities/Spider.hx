@@ -9,9 +9,9 @@ class Spider extends WrapAroundEntity {
     static inline var MIN_SIZE = 100;
     static inline var MAX_SIZE = 100000;
     static inline var WORST_MOVE_SPEED: Int = 16;
-    static inline var BEST_MOVE_SPEED: Int = 320;
-    static inline var WORST_ROTATE_SPEED: Float = 0.5235987755982988; // 30 degrees in radians
-    static inline var BEST_ROTATE_SPEED: Float = 4.71238898038469; // 180 degrees in radians
+    static inline var BEST_MOVE_SPEED: Int = 512;
+    static inline var WORST_ROTATE_SPEED: Float = 0.3141592653589793; // 18 degrees in radians
+    static inline var BEST_ROTATE_SPEED: Float = 4.71238898038469; // 270 degrees in radians
     static inline var WORST_ANIMATION_SPEED: Float = 0.5;
     static inline var BEST_ANIMATION_SPEED: Float = 2;
     static inline var MIN_SCALE: Float = 0.125;
@@ -22,7 +22,7 @@ class Spider extends WrapAroundEntity {
 
     public var ratio(get, never): Float;
     inline function get_ratio() {
-        return Math.sqrt((size - MIN_SIZE) / (MAX_SIZE - MIN_SIZE));
+        return Math.sqrt((Math.max(MIN_SIZE, size) - MIN_SIZE) / (MAX_SIZE - MIN_SIZE));
     }
 
     public var size(default, set): Float;
@@ -105,12 +105,16 @@ class Spider extends WrapAroundEntity {
             }
             size += (syncData.size - size) / 2;
         }
-        if (Math.abs(syncData.x * Game.TILE_SIZE - x) > 2) {
-            x += (syncData.x * Game.TILE_SIZE - x) / 4;
+        var dx = Math.abs(syncData.x * Game.TILE_SIZE - x),
+            dy = Math.abs(syncData.y * Game.TILE_SIZE - y);
+        if (dx > 2) {
+            if (dx < 128) x += (syncData.x * Game.TILE_SIZE - x) / 4;
+            else x = syncData.x * Game.TILE_SIZE;
             moving = true;
         }
-        if (Math.abs(syncData.y * Game.TILE_SIZE - y) > 2) {
-            y += (syncData.y * Game.TILE_SIZE - y) / 4;
+        if (dy > 2) {
+            if (dy < 128) y += (syncData.y * Game.TILE_SIZE - y) / 4;
+            else y = syncData.y * Game.TILE_SIZE;
             moving = true;
         }
         // show animation when the position actually changes, not when the server says they're moving

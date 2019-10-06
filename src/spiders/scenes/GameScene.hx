@@ -88,7 +88,7 @@ class GameScene extends Scene {
     }
 
     function tryConnect() {
-        ws = new WebSocket("ws://localhost:27278");
+        ws = new WebSocket("ws://spiders.tacobell.pizza:27278");
         ws.binaryType = BinaryType.ARRAYBUFFER;
         ws.onopen = function() {
             var buf = pingBuffer;
@@ -117,6 +117,7 @@ class GameScene extends Scene {
                     mySpider.x = syncData.x * Game.TILE_SIZE;
                     syncData.y = data.getFloat(cursor); cursor += 4;
                     mySpider.y = syncData.y * Game.TILE_SIZE;
+                    trace('spawned at ${syncData.x} ${syncData.y}');
                     syncData.angle = data.getFloat(cursor); cursor += 4;
                     mySpider.angle = syncData.angle;
                     var nameLength = data.get(cursor); ++cursor;
