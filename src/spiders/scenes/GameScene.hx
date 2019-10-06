@@ -6,9 +6,11 @@ import js.html.ArrayBuffer;
 import js.html.BinaryType;
 import js.html.MessageEvent;
 import js.html.WebSocket;
+import haxepunk.Camera;
 import haxepunk.HXP;
 import haxepunk.Scene;
 import haxepunk.graphics.tile.Backdrop;
+import haxepunk.graphics.text.BitmapText;
 import haxepunk.input.Input;
 import haxepunk.input.Key;
 import spiders.entities.Spider;
@@ -16,9 +18,24 @@ import spiders.graphics.Splatter;
 
 class GameScene extends Scene {
     static inline var UPDATE_THROTTLE = 0.125;
+    static inline var YOU_DIED_TIME = 3.5;
+    static inline var HURT_PULSE_TIME = 0.75;
+
+    static var _initialized: Bool = initGame();
+    static function initGame() {
+        // stuff to do only once
+        Key.define("left", [Key.LEFT, Key.A]);
+        Key.define("right", [Key.RIGHT, Key.D]);
+        Key.define("forward", [Key.UP, Key.W]);
+        Key.define("submit", [Key.ENTER]);
+        BitmapText.defineFormatTag("red", {color: 0xc00000});
+        BitmapText.defineFormatTag("small", {scale: 0.5});
+        return true;
+    }
 
     var mySpider: Spider;
     var ws: WebSocket;
+    var arenaSize: Int;
 
     var spiders: Map<Int, Spider> = new Map();
     var updateThrottle: Float = 0;
@@ -26,28 +43,60 @@ class GameScene extends Scene {
     var lastMovingSent: Bool = false;
     var lastRotatingSent: Int = 0;
 
+    var backdrop: Backdrop;
     var splatter: Splatter;
+    var scoreLabel: BitmapText;
+    var leaderLabel: BitmapText;
+    var youDiedLabel: BitmapText;
+
+    var dead: Bool = false;
+    var hurtCount: Int = 0;
+
+    var leader: Int = 0;
+    var leaderScore: Int = 0;
 
     static var pingBuffer: Bytes = Bytes.alloc(1);
+    static var nameReqBuffer: Bytes = Bytes.alloc(3);
     override public function begin() {
-        ws = new WebSocket("ws://localhost:27278");
-        ws.binaryType = BinaryType.ARRAYBUFFER;
-        ws.onopen = function() {
-            trace("sent");
-            var buf = pingBuffer;
-            buf.set(0, MessageType.SpawnMe);
-            ws.send(buf.getData());
-        }
-
-        ws.onmessage = readMessage;
-
-        var backdrop = new Backdrop("assets/graphics/bg.png", true, true);
+        backdrop = new Backdrop("assets/graphics/bg.png", true, true);
         backdrop.smooth = true;
         backdrop.pixelSnapping = false;
         addGraphic(backdrop);
 
         splatter = new Splatter();
         addGraphic(splatter);
+
+        var uiCamera = new Camera();
+
+        scoreLabel = new BitmapText("Connecting...", {font: "assets/fonts/octobercrow.72.fnt", size: 72});
+        scoreLabel.x = scoreLabel.y = 16;
+        addGraphic(scoreLabel).camera = uiCamera;
+
+        leaderLabel = new BitmapText(" ", {font: "assets/fonts/octobercrow.72.fnt", size: 72});
+        leaderLabel.x = leaderLabel.y = 16;
+        addGraphic(leaderLabel).camera = uiCamera;
+
+        youDiedLabel = new BitmapText("<center><red>YOU DIED...</red>\n\n<small>Press <red>ENTER</red> to try again</small></center>", {font: "assets/fonts/octobercrow.72.fnt", size: 96});
+        youDiedLabel.visible = false;
+        var e = addGraphic(youDiedLabel);
+        e.layer = -1;
+        e.camera = uiCamera;
+        bgColor = 0x800000;
+
+        tryConnect();
+    }
+
+    function tryConnect() {
+        ws = new WebSocket("ws://localhost:27278");
+        ws.binaryType = BinaryType.ARRAYBUFFER;
+        ws.onopen = function() {
+            var buf = pingBuffer;
+            buf.set(0, MessageType.SpawnMe);
+            ws.send(buf.getData());
+        }
+
+        ws.onmessage = readMessage;
+        ws.onclose = youDied.bind(false);
     }
 
     function readMessage(message: MessageEvent) {
@@ -58,19 +107,19 @@ class GameScene extends Scene {
             switch (messageType) {
                 case MessageType.SpawnMe:
                     // TODO: protect against multiple spawns
+                    arenaSize = data.getUInt16(cursor); cursor += 2;
                     var key = data.getUInt16(cursor); cursor += 2;
                     var syncData = new SyncData(key);
-                    mySpider = new Spider(syncData, splatter, true);
+                    mySpider = new Spider(arenaSize * Game.TILE_SIZE, arenaSize * Game.TILE_SIZE, syncData, splatter, true);
                     syncData.x = data.getFloat(cursor); cursor += 4;
                     mySpider.x = syncData.x * Game.TILE_SIZE;
                     syncData.y = data.getFloat(cursor); cursor += 4;
                     mySpider.y = syncData.y * Game.TILE_SIZE;
                     syncData.angle = data.getFloat(cursor); cursor += 4;
                     mySpider.angle = syncData.angle;
+                    var nameLength = data.get(cursor); ++cursor;
+                    syncData.name = data.getString(cursor, nameLength); cursor += nameLength;
                     spiders[key] = mySpider;
-                    Key.define("left", [Key.LEFT, Key.A]);
-                    Key.define("right", [Key.RIGHT, Key.D]);
-                    Key.define("forward", [Key.UP, Key.W]);
 
                     add(mySpider);
 
@@ -85,9 +134,10 @@ class GameScene extends Scene {
                     for (i in 0 ... dirtyCount) {
                         var id = data.getUInt16(cursor); cursor += 2;
                         var isNew = false;
+                        var isMe = id == mySpider.syncData.key;
                         if (!spiders.exists(id)) {
                             var syncData = new SyncData(id);
-                            spiders[id] = new Spider(syncData, splatter, false);
+                            spiders[id] = new Spider(arenaSize * Game.TILE_SIZE, arenaSize * Game.TILE_SIZE, syncData, splatter, false);
                             add(spiders[id]);
                             isNew = true;
                         }
@@ -103,10 +153,26 @@ class GameScene extends Scene {
                             cursor += 8;
                         }
                         spider.syncData.angle = data.getFloat(cursor); cursor += 4;
+                        var originalSize = spider.syncData.size;
                         spider.syncData.size = data.getFloat(cursor); cursor += 4;
+                        if (isMe && spider.syncData.size < originalSize) {
+                            getHurt();
+                        }
                         spider.syncData.moving = data.get(cursor) != 0; ++cursor;
                         spider.syncData.rotating = data.get(cursor); ++cursor;
                         spider.syncData.state = data.get(cursor); ++cursor;
+                        spider.syncData.kills = data.getUInt16(cursor); cursor += 2;
+                        if (spider.syncData.kills > leaderScore) {
+                            leader = id;
+                            leaderScore = spider.syncData.kills;
+                        }
+                        if (isNew && spider.syncData.state != SpiderState.Fly) {
+                            // request the new spider's name
+                            var buf = nameReqBuffer;
+                            buf.set(0, MessageType.NameRequest);
+                            buf.setUInt16(1, id);
+                            ws.send(buf.getData());
+                        }
                     }
                     var removedCount = data.getUInt16(cursor); cursor += 2;
                     for (i in 0 ... removedCount) {
@@ -125,11 +191,75 @@ class GameScene extends Scene {
                     var buf = pingBuffer;
                     buf.set(0, MessageType.Ping);
                     ws.send(buf.getData());
+
+                case MessageType.NameRequest:
+                    var key = data.getUInt16(cursor); cursor += 2;
+                    var length = data.get(cursor); ++cursor;
+                    var name = data.getString(cursor, length); cursor += length;
+                    var spider = this.spiders[key];
+                    if (spider != null) {
+                        spider.syncData.name = name;
+                    }
+
+                case MessageType.YouDied:
+                    // too bad
+                    youDied(true);
+
+                default:
+                    throw "invalid message type: " + messageType;
             }
         }
     }
 
+    function getHurt() {
+        backdrop.alpha = 0.25;
+        hurtCount = 2;
+    }
+
+    function youDied(realDeath: Bool) {
+        if (!dead) {
+            backdrop.alpha = 1;
+            if (!realDeath) {
+                youDiedLabel.text = "<center><red>" + (mySpider != null ? "CONNECTION DIED" : "COULDN'T CONNECT") + "...</red>\n\n<small>Press <red>ENTER</red> to reconnect</small></center>";
+            }
+            youDiedLabel.x = (HXP.width - youDiedLabel.textWidth) / 2;
+            youDiedLabel.y = (HXP.height - youDiedLabel.textHeight) / 2;
+            youDiedLabel.visible = true;
+            youDiedLabel.alpha = 0;
+            if (mySpider != null) {
+                mySpider.syncData.size = 0;
+            }
+            updateScoreLabel();
+            dead = true;
+            if (ws != null && ws.readyState == 1) {
+                ws.close();
+            }
+
+            onInputPressed.submit.bind(function() {
+                // workaround to avoid disposing assets
+                HXP.scene = new GameScene();
+            });
+        }
+    }
+
     function gameUpdate() {
+        if (dead) {
+            youDiedLabel.alpha += HXP.elapsed / YOU_DIED_TIME;
+            if (youDiedLabel.alpha > 1) youDiedLabel.alpha = 1;
+            backdrop.alpha -= HXP.elapsed / YOU_DIED_TIME;
+            if (backdrop.alpha < 0.25) backdrop.alpha = 0.25;
+            return;
+        }
+        if (backdrop.alpha < 1) {
+            backdrop.alpha += HXP.elapsed / HURT_PULSE_TIME / 0.75;
+            if (backdrop.alpha >= 1) {
+                backdrop.alpha = 1;
+                if (hurtCount > 0) {
+                    --hurtCount;
+                    backdrop.alpha = 0.25;
+                }
+            }
+        }
         var left = Input.check("left");
         var right = Input.check("right");
         mySpider.moving = false;
@@ -168,6 +298,26 @@ class GameScene extends Scene {
             mySpider.syncData.dirty = false;
             updateThrottle = UPDATE_THROTTLE;
         }
+
+        updateScoreLabel();
+
+        if (leaderScore > 0 && spiders[leader] != null) {
+            var leader = spiders[leader];
+            leaderLabel.visible = true;
+            leaderLabel.text = '<right>Leader:\n<red>${leader.syncData.name}</red>  ${leaderScore}</right>';
+            leaderLabel.x = HXP.width - 16 - leaderLabel.textWidth;
+            leaderLabel.y = 16;
+        } else {
+            leaderLabel.visible = false;
+        }
+    }
+
+    function updateScoreLabel() {
+        if (mySpider != null) {
+            scoreLabel.text = '<red>Blood: ${Math.floor(mySpider.syncData.size)}</red>\nSouls: ${mySpider.syncData.kills}';
+        } else {
+            scoreLabel.text = '<red>Blood: 0</red>\nSouls: 0';
+        }
     }
 
     function rotate(dir: Int) {
@@ -178,10 +328,15 @@ class GameScene extends Scene {
     }
 
     function moveForward() {
+        var arenaSize = arenaSize * Game.TILE_SIZE;
         var moveSpeed = mySpider.moveSpeed * HXP.elapsed;
         mySpider.x += moveSpeed * Math.cos(mySpider.angle);
+        if (mySpider.x < 0) mySpider.x += arenaSize;
+        if (mySpider.x > arenaSize) mySpider.x -= arenaSize;
         mySpider.syncData.x = mySpider.x / Game.TILE_SIZE;
         mySpider.y -= moveSpeed * Math.sin(mySpider.angle);
+        if (mySpider.y < 0) mySpider.y += arenaSize;
+        if (mySpider.y > arenaSize) mySpider.y -= arenaSize;
         mySpider.syncData.y = mySpider.y / Game.TILE_SIZE;
         mySpider.syncData.dirty = true;
     }

@@ -19,10 +19,10 @@
 
 	<assets path="assets/graphics" include="*.png$" type="image" embed="true"/>
 	<assets path="assets/graphics" include="*.json|*.atlas" exclude="pack.json" type="text" embed="true"/>
-	<!--assets path="assets/fonts" include="*.png$" type="image" embed="true"/>
-	<assets path="assets/sounds" include="*.ogg" type="sound" embed="true"/>
-	<assets path="assets/music" include="*.ogg" type="music" embed="true"/>
+	<assets path="assets/fonts" include="*.png$" type="image" embed="true"/>
 	<assets path="assets/fonts" include="*.fnt" type="text" embed="true"/>
+	<!--assets path="assets/sounds" include="*.ogg" type="sound" embed="true"/>
+	<assets path="assets/music" include="*.ogg" type="music" embed="true"/>
 	<assets path="assets/shaders" include="*.frag" type="text" embed="true"/-->
 
 	<haxelib name="spinehaxe"/>

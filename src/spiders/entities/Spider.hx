@@ -2,22 +2,20 @@ package spiders.entities;
 
 import haxepunk.Entity;
 import haxepunk.HXP;
+import haxepunk.graphics.text.BitmapText;
 
-class Spider extends Entity {
+class Spider extends WrapAroundEntity {
     static inline var MIN_SIZE = 100;
     static inline var MAX_SIZE = 100000;
     static inline var WORST_MOVE_SPEED: Int = 24;
-    static inline var BEST_MOVE_SPEED: Int = 192;
+    static inline var BEST_MOVE_SPEED: Int = 256;
     static inline var WORST_ROTATE_SPEED: Float = 0.5235987755982988; // 30 degrees in radians
-    static inline var BEST_ROTATE_SPEED: Float = 3.141592653589793; // 180 degrees in radians
+    static inline var BEST_ROTATE_SPEED: Float = 4.71238898038469; // 180 degrees in radians
     static inline var WORST_ANIMATION_SPEED: Float = 0.5;
     static inline var BEST_ANIMATION_SPEED: Float = 2;
     static inline var MIN_SCALE: Float = 0.125;
     static inline var MAX_SCALE: Float = 1;
     static inline var SPLAT_TIME: Float = 0.25;
-
-    public var sp(get, never): SpiderSpine;
-    inline function get_sp() return cast graphic;
 
     public var ratio(get, never): Float;
     inline function get_ratio() {
@@ -30,6 +28,7 @@ class Spider extends Entity {
         var ratio = this.ratio;
         sp.speed = BEST_ANIMATION_SPEED + (WORST_ANIMATION_SPEED - BEST_ANIMATION_SPEED) * ratio;
         sp.scale = this.scale;
+        nameLabel.scale = this.scale * (pc ? 12 : 10);
         return v;
     }
 
@@ -62,12 +61,17 @@ class Spider extends Entity {
     var splatTimer: Float;
     var splatter: Splatter;
 
-    public function new(syncData: SyncData, splatter: Splatter, pc: Bool) {
-        super(new SpiderSpine());
-        size = MIN_SIZE;
+    var sp: SpiderSpine;
+    var nameLabel: BitmapText;
+
+    public function new(arenaWidth: Int, arenaHeight: Int, syncData: SyncData, splatter: Splatter, pc: Bool) {
+        super(arenaWidth, arenaHeight, sp = new SpiderSpine());
         this.syncData = syncData;
         this.pc = pc;
         this.splatter = splatter;
+        nameLabel = new BitmapText("???", {font: "assets/fonts/octobercrow.72.fnt"});
+        addGraphic(nameLabel);
+        size = MIN_SIZE;
     }
 
     public function setAnimation(name: String, ?loop=true, ?onFinish:Void->Void) {
@@ -77,10 +81,7 @@ class Spider extends Entity {
     override public function update() {
         // gradually adjust state
         if (!pc) moving = false;
-        if (Math.abs(syncData.angle - angle) > Math.PI / 16) {
-            angle += (syncData.angle - angle) / 2;
-            moving = true;
-        }
+        angle = syncData.angle;
         if (Math.abs(syncData.size - size) > 0.1) {
             size += (syncData.size - size) / 2;
         }
@@ -104,6 +105,16 @@ class Spider extends Entity {
                 }
             }
             case SpiderState.Fly: sp.setAnimation("fly");
+        }
+
+        if (nameLabel != null) {
+            if (syncData.state == SpiderState.Fly) {
+                // flies don't have names
+                nameLabel.visible = false;
+            } else {
+                nameLabel.text = syncData.name;
+                nameLabel.x = -nameLabel.textWidth / 2;
+            }
         }
     }
 }

@@ -1,28 +1,30 @@
 import * as express from 'express';
 import * as http from 'http';
 import * as WebSocket from 'ws';
+import * as fs from 'fs';
 
 const app = express();
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// const arenaSize = 8;
-const arenaSize = 4;
+const names = fs.readFileSync('names.txt').toString().split('\n');
+
+const arenaSize = 8;
 const geoCacheCellSize = 0.5;
 const geoCacheSize = arenaSize / geoCacheCellSize;
 const eatTime = 2.5;
 const maxFlies = 15;
 const flySpawnTime = 2.5;
-const deathBuffer = 0.25;
+const deathBuffer = 0.001;
 
 const PING_TIMEOUT = 15000;
 const MIN_SIZE = 100;
 const MAX_SIZE = 100000;
 const WORST_MOVE_SPEED: number = 24;
-const BEST_MOVE_SPEED: number = 192;
+const BEST_MOVE_SPEED: number = 256;
 const WORST_ROTATE_SPEED: number = 0.5235987755982988; // 30 degrees in radians
-const BEST_ROTATE_SPEED: number = Math.PI; // 180 degrees in radians
+const BEST_ROTATE_SPEED: number = 4.71238898038469; // 270 degrees in radians
 const MIN_SCALE: number = 0.125;
 const MAX_SCALE: number = 1;
 
@@ -41,6 +43,7 @@ enum MessageType {
     RotatingLeft = 104,
     RotatingRight = 105,
     NotRotating = 106,
+    NameRequest = 107,
     SpawnMe = 123,
 
     Ping = 201,
@@ -61,6 +64,7 @@ function subtractAngle(a: number, b: number): number {
 }
 
 class Spider {
+    name: string;
     id: number;
     x: number;
     y: number;
@@ -75,9 +79,15 @@ class Spider {
     dirty: boolean = true;
     lastState: SpiderState = SpiderState.Idle;
     health: number = 1;
+    kills: number = 0;
 
-    constructor(id: number, ws?: PlayerConnection) {
+    constructor(world: World, ws?: PlayerConnection) {
+        let id;
+        do {
+            id = Math.floor(Math.random() * 65535);
+        } while (world.spidersByKey.has(id));
         this.id = id;
+        this.name = names[Math.floor(names.length * Math.random())];
         if (ws) {
             this.ws = ws;
         } else {
@@ -97,7 +107,7 @@ class Spider {
     }
 
     get radius() {
-        return (MIN_SCALE + (MAX_SCALE - MIN_SCALE) * this.ratio) / 2;
+        return (MIN_SCALE + (MAX_SCALE - MIN_SCALE) * this.ratio) * 0.75;
     }
 
     get moveSpeed() {
@@ -141,19 +151,23 @@ class Spider {
     }
 
     public bite(other: Spider, time: number) {
+        if (this.health <= 0 || other.health <= 0) return;
+        this.state = SpiderState.Biting;
         let eat = Math.max(Math.min(Math.min(this.size, other.size) * time / eatTime, other.size - MIN_SIZE), 0);
         other.size -= eat;
-        other.health -= time / deathBuffer;
-        if (other.health <= 0) {
-            eat = MIN_SIZE;
+        if (other.size <= MIN_SIZE) {
+            other.health -= time / deathBuffer;
+            if (other.health <= 0) {
+                eat += MIN_SIZE;
+                if (!other.isFly) this.kills += Math.max(1, other.kills);
+            }
+            other.size = MIN_SIZE;
         }
-        if (other.size < MIN_SIZE) other.size = MIN_SIZE;
         if (eat > 0) {
             this.size += eat;
             this.health += time / deathBuffer;
             if (this.health > 1) this.health = 1;
             if (this.size > MAX_SIZE) this.size = MAX_SIZE;
-            console.log([this.size, other.size]);
             this.dirty = other.dirty = true;
         }
     }
@@ -169,6 +183,7 @@ const cellOffsets = [-geoCacheSize - 1, -geoCacheSize, -geoCacheSize + 1, -1, 0,
 
 class World {
     public spiders: Array<Spider> = [];
+    public spidersByKey: Map<number, Spider> = new Map();
     public geoCache: Array<Array<Spider>> = [];
     public removed: Array<number> = [];
 
@@ -183,14 +198,16 @@ class World {
     }
 
     public addSpider(conn: PlayerConnection): Spider {
-        const spider = new Spider(Math.floor(Math.random() * 65535), conn);
+        const spider = new Spider(this, conn);
         this.spiders.push(spider);
+        this.spidersByKey.set(spider.id, spider);
         return spider;
     }
 
     public addFly(): void {
-        const fly = new Spider(Math.floor(Math.random() * 65535));
+        const fly = new Spider(this);
         this.spiders.push(fly);
+        this.spidersByKey.set(fly.id, fly);
     }
 
     public removeSpider(spider: Spider, alreadyRemoved: boolean = false) {
@@ -201,6 +218,7 @@ class World {
                 this.removed.push(spider.id);
             }
         }
+        this.spidersByKey.delete(spider.id);
         const geoCacheCell = this.geoCache[spider.currentGeoCacheCell];
         if (geoCacheCell) {
             const geoIndex = geoCacheCell.indexOf(spider);
@@ -233,7 +251,10 @@ class World {
             if (spider.health <= 0) {
                 // died
                 if (spider.ws) {
-                    // send "YOU DIED"
+                    let writeCursor = 0;
+                    const write = new Buffer(1);
+                    write.writeUInt8(MessageType.YouDied, writeCursor); ++writeCursor;
+                    spider.ws.send(write);
                 }
                 this.spiders.splice(i, 1);
                 this.removed.push(spider.id);
@@ -286,14 +307,12 @@ class World {
                                 if (otherSpider.isFly || spider.size > otherSpider.size) {
                                     // spider is bigger, so this is good enough
                                     spider.bite(otherSpider, time);
-                                    spider.state = SpiderState.Biting;
                                 } else if (subtractAngle(angleBetween, otherSpider.angle) < Math.PI / 2) {
                                     const angleDiff = subtractAngle(spider.angle, otherSpider.angle);
                                     const vectorDiff = subtractAngle(angleBetween, otherSpider.angle);
                                     if (vectorDiff < Math.PI / 2 && angleDiff < Math.PI / 3) {
                                         // otherSpider is facing away
                                         spider.bite(otherSpider, time);
-                                        spider.state = SpiderState.Biting;
                                     }
                                 }
                             }
@@ -330,7 +349,7 @@ class World {
             removedCount = this.removed.length;
         }
         if (dirtyCount > 0) {
-            const updateBuffer = new Buffer(3 + 21 * dirtyCount + 2 * (removedCount + 1));
+            const updateBuffer = new Buffer(3 + 23 * dirtyCount + 2 * (removedCount + 1));
             let updateCursor = 0;
             updateBuffer.writeUInt8(MessageType.UpdateData, updateCursor); ++updateCursor;
             updateBuffer.writeUInt16LE(dirtyCount, updateCursor); updateCursor += 2;
@@ -344,6 +363,7 @@ class World {
                     updateBuffer.writeUInt8(spider.moving ? 1 : 0, updateCursor); ++updateCursor;
                     updateBuffer.writeInt8(spider.rotating, updateCursor); ++updateCursor;
                     updateBuffer.writeUInt8(spider.state, updateCursor); ++updateCursor;
+                    updateBuffer.writeUInt16LE(spider.kills, updateCursor); updateCursor += 2;
                     if (onlyDirty) {
                         spider.dirty = false;
                     }
@@ -382,12 +402,15 @@ wss.on('connection', (ws: WebSocket) => {
                     const key = conn._playerKey = spider.id;
                     console.log(`[${key.toString(16)}]: spawning`);
                     let writeCursor = 0;
-                    const write = new Buffer(15);
+                    const write = new Buffer(18 + spider.name.length);
                     write.writeUInt8(MessageType.SpawnMe, writeCursor); writeCursor++;
+                    write.writeUInt16LE(arenaSize, writeCursor); writeCursor += 2;
                     write.writeUInt16LE(key, writeCursor); writeCursor += 2;
                     write.writeFloatLE(spider.x, writeCursor); writeCursor += 4;
                     write.writeFloatLE(spider.y, writeCursor); writeCursor += 4;
                     write.writeFloatLE(spider.angle, writeCursor); writeCursor += 4;
+                    write.writeUInt8(spider.name.length, writeCursor); writeCursor++;
+                    write.write(spider.name, writeCursor, 'ascii'); writeCursor += spider.name.length;
                     ws.send(write);
                     const updateBuffer = world.makeUpdate(false);
                     if (updateBuffer) {
@@ -442,6 +465,22 @@ wss.on('connection', (ws: WebSocket) => {
                 case MessageType.Ping: {
                     console.log(`[${conn._playerKey.toString(16)}]: ping`);
                     setTimeout(sendPing, 5000);
+                    break;
+                }
+                case MessageType.NameRequest: {
+                    const key = message.readUInt16LE(cursor); cursor += 2;
+                    const spider = world.spidersByKey.get(key);
+                    if (spider) {
+                        let writeCursor = 0;
+                        const write = new Buffer(4 + spider.name.length);
+                        write.writeUInt8(MessageType.NameRequest, writeCursor); writeCursor++;
+                        write.writeUInt16LE(key, writeCursor); writeCursor += 2;
+                        write.writeUInt8(spider.name.length, writeCursor); writeCursor++;
+                        write.write(spider.name, writeCursor, 'ascii'); writeCursor += spider.name.length;
+                        ws.send(write);
+                    } else {
+                        console.error(`unknown spider's name requested [${key.toString(16)}]`);
+                    }
                     break;
                 }
                 default: {

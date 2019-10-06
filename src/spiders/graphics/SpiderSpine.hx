@@ -27,13 +27,11 @@ class SpiderSpine extends SpinePunk {
     {
 
         if (_skeletonData == null) {
-            _skeletonData = SpinePunk.readSkeletonData("spider", "assets/graphics/", HXP.scene.assetCache);
+            _skeletonData = SpinePunk.readSkeletonData("spider", "assets/graphics/");
             _stateData = new AnimationStateData(_skeletonData);
             _stateData.defaultMix = 0.1;
         }
         super(_skeletonData, _stateData);
-        trace(this.state);
-        trace(this.state.data);
 
         smooth = true;
         pixelSnapping = false;

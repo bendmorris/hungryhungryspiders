@@ -7,6 +7,7 @@ package spiders;
     var RotatingLeft = 104;
     var RotatingRight = 105;
     var NotRotating = 106;
+    var NameRequest = 107;
     var SpawnMe = 123;
     var Ping = 201;
     var YouDied = 202;
