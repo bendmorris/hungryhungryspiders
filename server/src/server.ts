@@ -10,19 +10,19 @@ const wss = new WebSocket.Server({ server });
 
 const names = fs.readFileSync('names.txt').toString().split('\n');
 
-const arenaSize = 8;
-const geoCacheCellSize = 0.5;
-const geoCacheSize = arenaSize / geoCacheCellSize;
+const arenaSize = 12;
+const geoCacheCellSize = 2;
+const geoCacheRowSize = arenaSize / geoCacheCellSize;
 const eatTime = 2.5;
-const maxFlies = 15;
-const flySpawnTime = 2.5;
-const deathBuffer = 0.001;
+const maxFlies = Math.floor(arenaSize * arenaSize / 5);
+const flySpawnTime = 0.25;
+const deathBuffer = 0.5;
 
 const PING_TIMEOUT = 15000;
 const MIN_SIZE = 100;
 const MAX_SIZE = 100000;
-const WORST_MOVE_SPEED: number = 24;
-const BEST_MOVE_SPEED: number = 256;
+const WORST_MOVE_SPEED: number = 16;
+const BEST_MOVE_SPEED: number = 320;
 const WORST_ROTATE_SPEED: number = 0.5235987755982988; // 30 degrees in radians
 const BEST_ROTATE_SPEED: number = 4.71238898038469; // 270 degrees in radians
 const MIN_SCALE: number = 0.125;
@@ -54,8 +54,10 @@ function mod(v: number, n: number): number {
     return (v % n + n) % n;
 }
 
-function getCacheCell(x: number, y: number): number {
-    return Math.floor(y * geoCacheSize) + Math.floor(x / geoCacheCellSize);
+function getCacheCell(x: number, y: number, ox: number = 0, oy: number = 0): number {
+    const cx = mod(Math.floor(x / geoCacheCellSize) + ox, geoCacheRowSize);
+    const cy = mod(Math.floor(y / geoCacheCellSize) + oy, geoCacheRowSize);
+    return cy * geoCacheRowSize + cx;
 }
 
 function subtractAngle(a: number, b: number): number {
@@ -107,7 +109,7 @@ class Spider {
     }
 
     get radius() {
-        return (MIN_SCALE + (MAX_SCALE - MIN_SCALE) * this.ratio) * 0.75;
+        return MIN_SCALE + (MAX_SCALE - MIN_SCALE) * this.ratio * 0.75;
     }
 
     get moveSpeed() {
@@ -179,8 +181,22 @@ interface PlayerConnection extends WebSocket {
     _lastPing: number;
 }
 
-const cellOffsets = [-geoCacheSize - 1, -geoCacheSize, -geoCacheSize + 1, -1, 0, 1, geoCacheSize - 1, geoCacheSize, geoCacheSize + 1];
+const cellOffsets = [
+    [-1, -1],
+    [0, -1],
+    [1, -1],
+    [-1, 0],
+    [0, 0],
+    [1, 0],
+    [-1, 1],
+    [0, 1],
+    [1, 1],
+];
 
+let updateTime = 0;
+let updateFrames = 0;
+let updateSize = 0;
+let lastReport = Date.now();
 class World {
     public spiders: Array<Spider> = [];
     public spidersByKey: Map<number, Spider> = new Map();
@@ -191,7 +207,7 @@ class World {
     _flyCount: number = 0;
 
     constructor() {
-        const size = geoCacheSize * geoCacheSize;
+        const size = geoCacheRowSize * geoCacheRowSize;
         for (let i = 0; i < size; ++i) {
             this.geoCache[i] = [];
         }
@@ -232,6 +248,8 @@ class World {
     }
 
     public update(time: number): void {
+        var updateStart = Date.now();
+
         // spawn flies
         if (this._flyCount < maxFlies) {
             this._flySpawnTime -= time;
@@ -293,16 +311,15 @@ class World {
         // check for collisions
         for (const spider of this.spiders) {
             if (spider.isFly) continue;
-            const currentCell = spider.currentGeoCacheCell;
-            for (const offset of cellOffsets) {
-                const cell = this.geoCache[currentCell + offset];
+            for (const [ox, oy] of cellOffsets) {
+                const cell = this.geoCache[getCacheCell(spider.x, spider.y, ox, oy)];
                 if (cell && cell.length) {
                     for (const otherSpider of cell) {
                         if (spider == otherSpider) continue;
                         const distance = Math.sqrt(Math.pow(spider.x - otherSpider.x, 2) + Math.pow(spider.y - otherSpider.y, 2));
                         if (distance <= spider.radius + otherSpider.radius) {
                             const angleBetween = mod(Math.atan2(spider.y - otherSpider.y, otherSpider.x - spider.x), Math.PI * 2);
-                            if (subtractAngle(angleBetween, spider.angle) < Math.PI / 3) {
+                            if (subtractAngle(angleBetween, spider.angle) < Math.PI / 2) {
                                 // spider is facing otherSpider
                                 if (otherSpider.isFly || spider.size > otherSpider.size) {
                                     // spider is bigger, so this is good enough
@@ -330,10 +347,25 @@ class World {
         let updateBuffer = this.makeUpdate(true);
 
         if (updateBuffer) {
-            console.log(`sending update of size ${updateBuffer.length}`);
             for (const spider of this.spiders) {
-                if (spider.ws) spider.ws.send(updateBuffer);
+                if (spider.ws) {
+                    spider.ws.send(updateBuffer);
+                    updateSize += updateBuffer.length;
+                }
             }
+        }
+
+        updateTime += Date.now() - updateStart;
+
+        if (++updateFrames >= 300) {
+            let currentTime = Date.now();
+            console.log("average update duration (ms): " + updateTime / updateFrames);
+            console.log("update bytes sent per second: " + updateSize / (currentTime - lastReport) * 1000);
+            console.log("duration: " + (currentTime - lastReport));
+            updateTime = 0;
+            updateFrames = 0;
+            updateSize = 0;
+            lastReport = currentTime;
         }
     }
 
@@ -419,7 +451,7 @@ wss.on('connection', (ws: WebSocket) => {
                     break;
                 }
                 case MessageType.UpdateData: {
-                    console.log(`[${conn._playerKey.toString(16)}]: update`);
+                    // console.log(`[${conn._playerKey.toString(16)}]: update`);
                     const key = message.readUInt16LE(cursor); cursor += 2;
                     if (key === conn._playerKey) {
                         const spider = conn._spider;
@@ -435,7 +467,7 @@ wss.on('connection', (ws: WebSocket) => {
                     break;
                 }
                 case MessageType.Moving: case MessageType.NotMoving: {
-                    console.log(`[${conn._playerKey.toString(16)}]: move update`);
+                    // console.log(`[${conn._playerKey.toString(16)}]: move update`);
                     const key = message.readUInt16LE(cursor); cursor += 2;
                     if (key === conn._playerKey) {
                         const spider = conn._spider;
@@ -449,7 +481,7 @@ wss.on('connection', (ws: WebSocket) => {
                     break;
                 }
                 case MessageType.RotatingLeft: case MessageType.RotatingRight: case MessageType.NotRotating: {
-                    console.log(`[${conn._playerKey.toString(16)}]: rotate update`);
+                    // console.log(`[${conn._playerKey.toString(16)}]: rotate update`);
                     const key = message.readUInt16LE(cursor); cursor += 2;
                     if (key === conn._playerKey) {
                         const spider = conn._spider;
@@ -502,7 +534,7 @@ setInterval(() => {
     const current = Date.now();
     world.update((current - lastUpdate) / 1000);
     lastUpdate = current;
-}, 125);
+}, 100);
 
 const port = process.env.PORT || 27278;
 

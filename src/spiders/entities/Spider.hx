@@ -3,12 +3,13 @@ package spiders.entities;
 import haxepunk.Entity;
 import haxepunk.HXP;
 import haxepunk.graphics.text.BitmapText;
+import haxepunk.utils.Color;
 
 class Spider extends WrapAroundEntity {
     static inline var MIN_SIZE = 100;
     static inline var MAX_SIZE = 100000;
-    static inline var WORST_MOVE_SPEED: Int = 24;
-    static inline var BEST_MOVE_SPEED: Int = 256;
+    static inline var WORST_MOVE_SPEED: Int = 16;
+    static inline var BEST_MOVE_SPEED: Int = 320;
     static inline var WORST_ROTATE_SPEED: Float = 0.5235987755982988; // 30 degrees in radians
     static inline var BEST_ROTATE_SPEED: Float = 4.71238898038469; // 180 degrees in radians
     static inline var WORST_ANIMATION_SPEED: Float = 0.5;
@@ -16,6 +17,8 @@ class Spider extends WrapAroundEntity {
     static inline var MIN_SCALE: Float = 0.125;
     static inline var MAX_SCALE: Float = 1;
     static inline var SPLAT_TIME: Float = 0.25;
+    static inline var MIN_BITE_TIME: Float = 2;
+    static inline var PULSE_TIME: Float = 0.5;
 
     public var ratio(get, never): Float;
     inline function get_ratio() {
@@ -63,6 +66,9 @@ class Spider extends WrapAroundEntity {
 
     var sp: SpiderSpine;
     var nameLabel: BitmapText;
+    var lastState: SpiderState = SpiderState.Idle;
+    var biteTime: Float = 0;
+    var pulseTime: Float = 0;
 
     public function new(arenaWidth: Int, arenaHeight: Int, syncData: SyncData, splatter: Splatter, pc: Bool) {
         super(arenaWidth, arenaHeight, sp = new SpiderSpine());
@@ -75,22 +81,36 @@ class Spider extends WrapAroundEntity {
     }
 
     public function setAnimation(name: String, ?loop=true, ?onFinish:Void->Void) {
+        if (biteTime > 0) return;
         sp.setAnimation(name, loop, onFinish);
     }
 
     override public function update() {
+        width = height = Std.int(sp.scale * Game.TILE_SIZE);
+        originX = originY = Std.int(width / 2);
         // gradually adjust state
         if (!pc) moving = false;
+        if (biteTime > 0) {
+            biteTime -= HXP.elapsed / MIN_BITE_TIME;
+        }
         angle = syncData.angle;
-        if (Math.abs(syncData.size - size) > 0.1) {
+        nameLabel.color = Color.White.lerp(0xff8080, pulseTime);
+        if (pulseTime > 0) {
+            pulseTime -= HXP.elapsed / PULSE_TIME;
+            if (pulseTime < 0) pulseTime = 0;
+        }
+        if (Math.abs(syncData.size - size) > 1) {
+            if (syncData.size > size) {
+                pulseTime = 1;
+            }
             size += (syncData.size - size) / 2;
         }
         if (Math.abs(syncData.x * Game.TILE_SIZE - x) > 2) {
-            x += (syncData.x * Game.TILE_SIZE - x) / 2;
+            x += (syncData.x * Game.TILE_SIZE - x) / 4;
             moving = true;
         }
         if (Math.abs(syncData.y * Game.TILE_SIZE - y) > 2) {
-            y += (syncData.y * Game.TILE_SIZE - y) / 2;
+            y += (syncData.y * Game.TILE_SIZE - y) / 4;
             moving = true;
         }
         // show animation when the position actually changes, not when the server says they're moving
@@ -103,9 +123,18 @@ class Spider extends WrapAroundEntity {
                     --splatTimer;
                     splatter.splat(x, y, Game.TILE_SIZE * scale / 2, 1);
                 }
+                if (lastState != SpiderState.Biting) {
+                    var maxDist = HXP.width * 2;
+                    var d = (Math.sqrt(Math.pow(x - HXP.scene.camera.x, 2) + Math.pow(y - HXP.scene.camera.y, 2)));
+                    if (d < maxDist) {
+                        Sound.play("splash", (maxDist - d) / maxDist);
+                    }
+                }
+                biteTime = 1;
             }
             case SpiderState.Fly: sp.setAnimation("fly");
         }
+        lastState = syncData.state;
 
         if (nameLabel != null) {
             if (syncData.state == SpiderState.Fly) {

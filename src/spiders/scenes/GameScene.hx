@@ -17,7 +17,7 @@ import spiders.entities.Spider;
 import spiders.graphics.Splatter;
 
 class GameScene extends Scene {
-    static inline var UPDATE_THROTTLE = 0.125;
+    static inline var UPDATE_THROTTLE = 0.1;
     static inline var YOU_DIED_TIME = 3.5;
     static inline var HURT_PULSE_TIME = 0.75;
 
@@ -58,6 +58,7 @@ class GameScene extends Scene {
     static var pingBuffer: Bytes = Bytes.alloc(1);
     static var nameReqBuffer: Bytes = Bytes.alloc(3);
     override public function begin() {
+        Music.stop();
         backdrop = new Backdrop("assets/graphics/bg.png", true, true);
         backdrop.smooth = true;
         backdrop.pixelSnapping = false;
@@ -106,6 +107,7 @@ class GameScene extends Scene {
             var messageType = data.get(cursor++);
             switch (messageType) {
                 case MessageType.SpawnMe:
+                    Sound.play("new");
                     // TODO: protect against multiple spawns
                     arenaSize = data.getUInt16(cursor); cursor += 2;
                     var key = data.getUInt16(cursor); cursor += 2;
@@ -218,6 +220,8 @@ class GameScene extends Scene {
 
     function youDied(realDeath: Bool) {
         if (!dead) {
+            Music.play("death");
+            Sound.play("dead");
             backdrop.alpha = 1;
             if (!realDeath) {
                 youDiedLabel.text = "<center><red>" + (mySpider != null ? "CONNECTION DIED" : "COULDN'T CONNECT") + "...</red>\n\n<small>Press <red>ENTER</red> to reconnect</small></center>";
@@ -309,6 +313,7 @@ class GameScene extends Scene {
             leaderLabel.y = 16;
         } else {
             leaderLabel.visible = false;
+            leaderScore = 0;
         }
     }
 
@@ -330,13 +335,20 @@ class GameScene extends Scene {
     function moveForward() {
         var arenaSize = arenaSize * Game.TILE_SIZE;
         var moveSpeed = mySpider.moveSpeed * HXP.elapsed;
+        var offsetX = 0, offsetY = 0;
         mySpider.x += moveSpeed * Math.cos(mySpider.angle);
-        if (mySpider.x < 0) mySpider.x += arenaSize;
-        if (mySpider.x > arenaSize) mySpider.x -= arenaSize;
-        mySpider.syncData.x = mySpider.x / Game.TILE_SIZE;
+        if (mySpider.x < 0) offsetX += arenaSize;
+        if (mySpider.x > arenaSize) offsetX -= arenaSize;
         mySpider.y -= moveSpeed * Math.sin(mySpider.angle);
-        if (mySpider.y < 0) mySpider.y += arenaSize;
-        if (mySpider.y > arenaSize) mySpider.y -= arenaSize;
+        if (mySpider.y < 0) offsetY += arenaSize;
+        if (mySpider.y > arenaSize) offsetY -= arenaSize;
+
+        if (offsetX != 0 || offsetY != 0) {
+            mySpider.x += offsetX;
+            mySpider.y += offsetY;
+            splatter.offsetSplats(offsetX, offsetY);
+        }
+        mySpider.syncData.x = mySpider.x / Game.TILE_SIZE;
         mySpider.syncData.y = mySpider.y / Game.TILE_SIZE;
         mySpider.syncData.dirty = true;
     }

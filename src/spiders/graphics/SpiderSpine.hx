@@ -21,7 +21,7 @@ class SpiderSpine extends SpinePunk {
         return !v;
     }
 
-    var currentAnimation: String;
+    public var currentAnimation: String;
 
     public function new(isFly: Bool = false)
     {
@@ -29,7 +29,7 @@ class SpiderSpine extends SpinePunk {
         if (_skeletonData == null) {
             _skeletonData = SpinePunk.readSkeletonData("spider", "assets/graphics/");
             _stateData = new AnimationStateData(_skeletonData);
-            _stateData.defaultMix = 0.1;
+            _stateData.defaultMix = 0.25;
         }
         super(_skeletonData, _stateData);
 
