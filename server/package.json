@@ -4,7 +4,7 @@
   "description": "Hungry Hungry Spiders",
   "main": "src/server.js",
   "dependencies": {
-    "express": "^4.17.1",
+    "express": "^4.18.2",
     "ws": "^7.1.2",
     "typescript": "^3.6.3",
     "@types/ws": "*",
